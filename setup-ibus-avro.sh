@@ -84,7 +84,22 @@ step "Installing ibus-avro-git (AUR via yay)..."
 yay -S --needed --noconfirm ibus-avro-git
 
 # ---------------------------------------------------------------------------
-# 2. IM environment — must beat Omarchy's default fcitx env.d
+# 2. IBus engine config — fresh installs don't list Avro as a usable engine
+#    until it's added to the preloaded/ordered engine lists.
+# ---------------------------------------------------------------------------
+step "Configuring IBus engines (English default, Bengali via Super+Shift+Space)..."
+if command -v gsettings >/dev/null 2>&1; then
+  gsettings set org.freedesktop.ibus.general preload-engines "['xkb:us::eng', 'ibus-avro']" 2>/dev/null \
+    && ok "preload-engines = ['xkb:us::eng', 'ibus-avro']" \
+    || warn "could not set preload-engines (run 'gsettings get org.freedesktop.ibus.general preload-engines' to check)"
+  gsettings set org.freedesktop.ibus.general engines-order "['ibus-avro', 'xkb:us::eng']" 2>/dev/null \
+    && ok "engines-order = ['ibus-avro', 'xkb:us::eng']"
+else
+  warn "gsettings not found — add 'ibus-avro' to org.freedesktop.ibus.general preload-engines manually."
+fi
+
+# ---------------------------------------------------------------------------
+# 3. IM environment — must beat Omarchy's default fcitx env.d
 #    (/usr/lib/environment.d/10-omarchy-fcitx.conf). /etc is applied last.
 # ---------------------------------------------------------------------------
 step "Writing IM environment override..."
@@ -126,7 +141,7 @@ if [[ -x /usr/lib/systemd/user-environment-generators/30-systemd-environment-d-g
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Hyprland Lua patches
+# 4. Hyprland Lua patches
 # ---------------------------------------------------------------------------
 step "Patching Hyprland Lua config ($HYPR_CFG)..."
 mkdir -p "$HYPR_CFG"
@@ -167,7 +182,7 @@ IBLOCK
 append_block "$HYPR_CFG/hyprland.lua" "hyprland.lua" "$WINDOWRULE_BLOCK"
 
 # ---------------------------------------------------------------------------
-# 4. Reload (only if running inside a Hyprland session)
+# 5. Reload (only if running inside a Hyprland session)
 # ---------------------------------------------------------------------------
 if command -v hyprctl >/dev/null 2>&1 && [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
   step "Reloading Hyprland config..."
@@ -176,7 +191,7 @@ if command -v hyprctl >/dev/null 2>&1 && [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Wrap up
+# 6. Wrap up
 # ---------------------------------------------------------------------------
 step "Setup complete."
 cat <<EOF

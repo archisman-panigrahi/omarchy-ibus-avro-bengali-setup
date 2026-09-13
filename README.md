@@ -20,9 +20,10 @@ popups, work in every app, and never steal focus.
 bash setup-ibus-avro.sh
 ```
 
-Installs `ibus` + `ibus-avro-git` (AUR via yay), writes `/etc/environment.d/99-ibus.conf`
-(to outrank the fcitx file), patches `autostart.lua`, `bindings.lua`, `hyprland.lua`,
-and asks you to log out/in. Idempotent — safe to re-run.
+Installs `ibus` + `ibus-avro-git` (AUR via yay), preloads the Avro engine,
+writes `/etc/environment.d/99-ibus.conf` (to outrank the fcitx file), patches
+`autostart.lua`, `bindings.lua`, `hyprland.lua`, and asks you to log out/in.
+Idempotent — safe to re-run.
 
 ## After reboot
 
@@ -34,6 +35,19 @@ After you log back in:
 
 Tokens `---[BEGIN]|omarchy-ibus-avro` … `---[END]|omarchy-ibus-avro` in the Lua
 files mark the script's changes (backups are `.bak.<timestamp>`).
+
+### Post-install IBus config
+
+Fresh installs don't list Avro as an engine until it's preloaded. The script does
+this; to do it manually (e.g. after a reinstall):
+
+```bash
+gsettings set org.freedesktop.ibus.general preload-engines "['xkb:us::eng', 'ibus-avro']"
+gsettings set org.freedesktop.ibus.general engines-order "['ibus-avro', 'xkb:us::eng']"
+gsettings get org.freedesktop.ibus.general preload-engines   # verify
+```
+
+English stays the default engine; Avro is one Super+Shift+Space away.
 
 ## Files
 
