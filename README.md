@@ -14,3 +14,4 @@ bash setup-ibus-avro.sh
 After it finishes, log out and back in, then toggle Bangla with **Ctrl+Space**.
 
 For a breakdown of how the script works and why the problem exists, see [`details.md`](details.md).
+This setup also works for other IBus engines/languages — see [`other-engines.md`](other-engines.md).
