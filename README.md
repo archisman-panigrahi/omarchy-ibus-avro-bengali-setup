@@ -10,10 +10,24 @@ Verified on: Omarchy, ibus 1.5.34, ibus-avro 1.2, Hyprland 0.56.x, uwsm.
 
 ## TL;DR
 
+### Option A — run the installer script
+
+Clone this repo (or copy `setup-ibus-avro.sh`), then:
+
+```bash
+bash setup-ibus-avro.sh
+```
+
+Installs `ibus` + `ibus-avro-git` (AUR via yay), writes `/etc/environment.d/99-ibus.conf`,
+patches `autostart.lua`, `bindings.lua`, `hyprland.lua`, and asks you to log out/in.
+Idempotent — safe to re-run.
+
+### Option B — do it manually
+
 ```bash
 # 1. Install
 sudo pacman -S ibus
-yay -S ibus-avro
+yay -S ibus-avro-git
 
 # 2. Put IM env in the right place (must beat Omarchy's default fcitx env.d)
 sudo install -o root -g root -m 0644 -D /dev/stdin /etc/environment.d/99-ibus.conf <<'EOF'
@@ -66,7 +80,7 @@ binding — so the engine toggle must first unbind it.
 
 ```bash
 sudo pacman -S ibus
-yay -S ibus-avro
+yay -S ibus-avro-git
 ```
 
 ### 2. Fix the IM environment (systemd user session)
@@ -194,6 +208,7 @@ terminal. Candidates are compositor popups; the tray icon is in the Omarchy top 
 
 ## Files
 
+- `setup-ibus-avro.sh` — one-shot installer (idempotent; see TL;DR)
 - `files/environment.d/99-ibus.conf` — the `/etc/environment.d` override
 - `files/hypr/autostart-ibus.lua` — add to `~/.config/hypr/autostart.lua`
 - `files/hypr/bindings-ibus.lua` — add to `~/.config/hypr/bindings.lua`
