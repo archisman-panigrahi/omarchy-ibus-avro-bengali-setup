@@ -21,12 +21,11 @@ On Omarchy/Hyprland, Bengali typed via IBus Avro is broken out of the box for fo
 4. **The default engine is English.** A fresh `ibus-avro` install isn't listed in
    IBus's `preload-engines`, so Avro isn't even switchable.
 
-Plus two conventions that make the fix tricky:
+Plus two conventions that shape the fix:
 
-- Omarchy binds `SUPER+SHIFT+SPACE` to "Toggle top bar"; Hyprland fires *every*
-  matching binding, so a same-combo toggle collides unless the Omarchy binding is
-  explicitly unbound. (The script instead uses **Ctrl+Space**, which Omarchy and
-  IBus itself leave free — IBus's own default trigger is `Control+space`.)
+- The toggle key is **Ctrl+Space**: Omarchy has no default binding on it (its space
+  bindings take a `SUPER` modifier), and it matches IBus's own default trigger
+  (`Control+space`), so no `unbind` is needed.
 - Re-running setup must be safe: files get backed up, and modified blocks must be
   *replaced*, not appended forever (the previous failure mode).
 

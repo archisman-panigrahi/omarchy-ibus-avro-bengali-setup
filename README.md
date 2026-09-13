@@ -9,6 +9,6 @@ Run this script to install and configure IBus + Avro properly:
 bash setup-ibus-avro.sh
 ```
 
-After it finishes, log out and back in, then toggle Bengali with **Ctrl+Space**.
+After it finishes, log out and back in, then toggle Bangla with **Ctrl+Space**.
 
 For a breakdown of how the script works and why the problem exists, see [`details.md`](details.md).
