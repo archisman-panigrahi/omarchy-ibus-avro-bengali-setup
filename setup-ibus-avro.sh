@@ -80,8 +80,17 @@ command -v hyprctl >/dev/null 2>&1 || warn "hyprctl not found — this guide tar
 step "Installing ibus (official repo)..."
 sudo pacman -S --needed --noconfirm ibus
 
-step "Installing ibus-avro-git (AUR via yay)..."
-yay -S --needed --noconfirm ibus-avro-git
+AVRO_INSTALLED=0
+if command -v pacman >/dev/null 2>&1 && pacman -Qq 2>/dev/null | grep -qE '^(ibus-avro|ibus-avro-git)$'; then
+  AVRO_INSTALLED=1
+fi
+
+if [ "$AVRO_INSTALLED" -eq 0 ]; then
+  step "Installing ibus-avro-git (AUR via yay)..."
+  yay -S --needed --noconfirm ibus-avro-git
+else
+  ok "ibus-avro already installed — skipping AUR build"
+fi
 
 # ---------------------------------------------------------------------------
 # 2. IBus engine config — fresh installs don't list Avro as a usable engine
@@ -193,7 +202,7 @@ fi
 step "Setup complete."
 cat <<EOF
 
-  Installed : ibus, ibus-avro-git (Avro Phonetic)
+  Installed : ibus (avro already installed, or built from AUR as ibus-avro-git)
   Env file  : ${INSTALLED_ENV}
   Lua files : autostart.lua, bindings.lua, hyprland.lua
 
