@@ -87,7 +87,7 @@ yay -S --needed --noconfirm ibus-avro-git
 # 2. IBus engine config — fresh installs don't list Avro as a usable engine
 #    until it's added to the preloaded/ordered engine lists.
 # ---------------------------------------------------------------------------
-step "Configuring IBus engines (English default, Bengali via Super+Shift+Space)..."
+step "Configuring IBus engines (English default, Bengali via Ctrl+Space)..."
 if command -v gsettings >/dev/null 2>&1; then
   gsettings set org.freedesktop.ibus.general preload-engines "['xkb:us::eng', 'ibus-avro']" 2>/dev/null \
     && ok "preload-engines = ['xkb:us::eng', 'ibus-avro']" \
@@ -158,15 +158,12 @@ IBLOCK
 )
 append_block "$HYPR_CFG/autostart.lua" "autostart.lua" "$AUTOSTART_BLOCK"
 
-# 3b. bindings.lua — unbind Omarchy's "Toggle top bar" (same combo), then bind Avro toggle
+# 3b. bindings.lua — bind the Avro toggle to Ctrl+Space (no Omarchy default on it)
 BINDINGS_BLOCK=$(cat <<'IBLOCK'
--- ---[BEGIN]|omarchy-ibus-avro
--- Toggle Bengali/English (Super+Shift+Space). Omarchy binds this combo to
--- 'Toggle top bar' (default/hypr/bindings/utilities.lua); Hyprland fires every
--- matching binding, so unbind it first.
-hl.unbind("SUPER + SHIFT + SPACE")
-o.bind("SUPER + SHIFT + SPACE", "IBus Avro toggle", "sh -c 'e=$(ibus engine); if [ \"$e\" = ibus-avro ]; then ibus engine xkb:us::eng; else ibus engine ibus-avro; fi'")
--- ---[END]|omarchy-ibus-avro
+-- >>> omarchy-ibus-avro
+-- Toggle Bengali/English with Ctrl+Space.
+o.bind("CTRL + SPACE", "IBus Avro toggle", "sh -c 'e=$(ibus engine); if [ \"$e\" = ibus-avro ]; then ibus engine xkb:us::eng; else ibus engine ibus-avro; fi'")
+-- <<< omarchy-ibus-avro
 IBLOCK
 )
 append_block "$HYPR_CFG/bindings.lua" "bindings.lua" "$BINDINGS_BLOCK"
@@ -202,7 +199,7 @@ cat <<EOF
 
   You MUST log out and back in so the session env is captured with ibus
   (already-running apps keep the old fcitx env). After re-login ibus
-  auto-starts and the tray icon appears; toggle Bengali with Super+Shift+Space.
+  auto-starts and the tray icon appears; toggle Bengali with Ctrl+Space.
 EOF
 
 if command -v hyprctl >/dev/null 2>&1 && [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
