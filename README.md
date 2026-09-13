@@ -1,6 +1,6 @@
-# IBus Avro (Bengali) on Omarchy
+# IBus Avro (Bangla/Bengali) on Omarchy
 
-Bengali typing is broken out of the box on Omarchy/Hyprland (fcitx env overrides,
+Bangla typing is broken out of the box on Omarchy/Hyprland (fcitx env overrides,
 ibús never autostarts, and the GTK panel steals focus while typing).
 
 Run this script to install and configure IBus + Avro properly:
