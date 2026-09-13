@@ -1,0 +1,13 @@
+-- Add to ~/.config/hypr/autostart.lua
+--
+-- IBus (ibus-avro Bengali input). This Hyprland setup runs the Lua main config
+-- (~/.config/hypr/hyprland.lua); hyprland.conf's `exec-once`/`env` are ignored
+-- in that mode, so the start hook is o.exec_on_start (fires once per session on
+-- the hyprland.start event).
+--
+-- Deliberately NOT `ibus-daemon -drx`: the old X11-style daemon with the GTK
+-- panel creates a separate candidate window that steals focus and breaks
+-- typing on Wayland (one character, then the window grabs focus and dies).
+-- `ibus start --type wayland` uses the input-method protocol v2 panel where
+-- candidates are compositor popups instead.
+o.exec_on_start("ibus start --type wayland")
