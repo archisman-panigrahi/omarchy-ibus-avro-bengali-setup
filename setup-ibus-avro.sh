@@ -156,6 +156,12 @@ step "Patching Hyprland Lua config ($HYPR_CFG)..."
 mkdir -p "$HYPR_CFG"
 
 # 3a. autostart.lua — start ibus via the Lua start hook (hyprland.conf is ignored in Lua mode)
+# Remove any legacy `ibus-daemon -drx` autostart line FIRST: it survives restores
+# and would race our wayland start (old X11 panel, no proper tray/SNI icon).
+if [ -f "$HYPR_CFG/autostart.lua" ] && grep -q 'o.exec_on_start("ibus-daemon' "$HYPR_CFG/autostart.lua" 2>/dev/null; then
+  sed -i '/o\.exec_on_start("ibus-daemon/d' "$HYPR_CFG/autostart.lua"
+  ok "removed legacy ibus-daemon autostart line"
+fi
 AUTOSTART_BLOCK=$(cat <<'IBLOCK'
 -- ---[BEGIN]|omarchy-ibus-avro
 -- IBus (ibus-avro). This Hyprland setup runs the Lua main config; hyprland.conf's
@@ -214,7 +220,14 @@ EOF
 if command -v hyprctl >/dev/null 2>&1 && [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
   if read -r -p "$(printf '%s' "${YELLOW}Log out now? [y/N] ${RESET}")" ans; then
     case "${ans,,}" in
-      y|yes) ok "Logging out..."; hyprctl exit ;;
+      y|yes)
+        ok "Logging out..."
+        if command -v uwsm >/dev/null 2>&1; then
+          uwsm stop
+        else
+          hyprctl dispatch exit
+        fi
+        ;;
       *) ok "Okay — log out manually when ready." ;;
     esac
   else
