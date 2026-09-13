@@ -1,11 +1,13 @@
 # IBus Avro (Bengali) on Omarchy
 
 Bengali typing is broken out of the box on Omarchy/Hyprland (fcitx env overrides,
-ibús never autostarts, and the old GTK panel steals focus while typing).
+ibús never autostarts, and the GTK panel steals focus while typing).
 
 Run this script to install and configure IBus + Avro properly:
 
 ```bash
+git clone github.com/archisman-panigrahi/omarchy-ibus-avro-setup
+cd omarchy-ibus-avro-setup
 bash setup-ibus-avro.sh
 ```
 
