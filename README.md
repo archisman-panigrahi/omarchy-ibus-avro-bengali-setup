@@ -10,3 +10,5 @@ bash setup-ibus-avro.sh
 ```
 
 After it finishes, log out and back in, then toggle Bengali with **Ctrl+Space**.
+
+For a breakdown of how the script works and why the problem exists, see [`details.md`](details.md).
