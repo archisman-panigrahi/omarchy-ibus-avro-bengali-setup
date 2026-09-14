@@ -1,9 +1,10 @@
-# IBus Avro (Bangla/Bengali) on Omarchy
+# IBus Avro (Bangla/Bengali input method) on Omarchy
 
-Bangla typing is broken out of the box on Omarchy/Hyprland (fcitx env overrides,
-ibús never autostarts, and the GTK panel steals focus while typing).
+## Here is how to type Bengali (Bangla) in Omarchy Linux using the Avro phonetic keyboard.
 
-Run this script to install and properly configure [ibus-avro]():
+This guide explains how to set up IBus Avro on Omarchy, the Arch/Hyprland-based Linux distribution. The usual IBus/Avro installation instructions do not work out of the box on Omarchy because Omarchy uses Fcitx5 by default and has environment settings that interfere with IBus.
+
+Run this script to install and properly configure [ibus-avro](https://github.com/sarim/ibus-avro/):
 
 ```bash
 git clone github.com/archisman-panigrahi/omarchy-ibus-avro-setup
