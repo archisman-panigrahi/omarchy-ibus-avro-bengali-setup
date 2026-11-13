@@ -4,6 +4,8 @@
 
 This guide explains how to set up IBus Avro on Omarchy, the Arch/Hyprland-based Linux distribution. The usual IBus/Avro installation instructions do not work out of the box on Omarchy because Omarchy uses Fcitx5 by default and has environment settings that interfere with IBus.
 
+The script disables Omarchy's Fcitx5 user service for your account, because Fcitx5 also claims the `org.freedesktop.IBus` D-Bus name and that prevents `ibus-daemon` from starting. Restore it any time with `systemctl --user enable --now omarchy-fcitx5.service`.
+
 Run this script to install and properly configure [ibus-avro](https://github.com/sarim/ibus-avro/):
 
 ```bash

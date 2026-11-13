@@ -2,23 +2,29 @@
 
 ## Why the problem exists
 
-On Omarchy/Hyprland, Bengali typed via IBus Avro is broken out of the box for four compounding reasons:
+On Omarchy/Hyprland, Bengali typed via IBus Avro is broken out of the box for
+five compounding reasons:
 
 1. **`hyprland.conf` is ignored.** The session boots from a Lua main config
    (`~/.config/hypr/hyprland.lua`). Omarchy's starter config relies on
    `exec-once`/`env` in `hyprland.conf`, which never run in Lua mode — so IBus
    never auto-starts and any env in that file never applies.
-2. **The wrong input-method env wins.** Omarchy ships
+2. **fcitx5 squats on the IBus bus name.** Omarchy enables
+   `omarchy-fcitx5.service`, and fcitx5's `ibusfrontend` addon registers
+   `org.freedesktop.IBus` on the session bus. With that name taken,
+   `ibus-daemon` cannot start: `ibus start` prints "IBus is running" and exits,
+   and `ibus engine` fails with `UnknownProperty`. IBus must own that name, so
+   fcitx5 has to be disabled for the user.
+3. **The wrong input-method env wins.** Omarchy ships
    `/usr/lib/environment.d/10-omarchy-fcitx.conf` with
    `QT_IM_MODULE/XMODIFIERS/SDL_IM_MODULE/INPUT_METHOD=fcitx`. Apps pick up their
-   input-method module from the session env, and `fcitx5` isn't even running — so
-   most apps get **no** input method at all. A user override in
+   input-method module from the session env. A user override in
    `~/.config/environment.d` is *not* enough here.
-3. **The default daemon mode is wrong for Wayland.** Omarchy's `autostart.lua`
+4. **The default daemon mode is wrong for Wayland.** Omarchy's `autostart.lua`
    runs `ibus-daemon -drx`, which opens the old X11 GTK candidate panel as a real
-   window. On Wayland it steals focus, arr corner the typing, and shows no proper
+   window. On Wayland it steals focus, errs during typing, and shows no proper
    tray/SNI icon.
-4. **The default engine is English.** A fresh `ibus-avro` install isn't listed in
+5. **The default engine is English.** A fresh `ibus-avro` install isn't listed in
    IBus's `preload-engines`, so Avro isn't even switchable.
 
 Plus two conventions that shape the fix:
@@ -44,7 +50,20 @@ Omarchy/Hyprland).
   package is used, the engine is registered as `ibus-avro` — so the check covers
   both package names.
 
-### 2. IBus engine config
+### 2. Disable fcitx5
+Omarchy's `omarchy-fcitx5.service` starts fcitx5 at login, and its
+`ibusfrontend` addon registers `org.freedesktop.IBus` on the session bus. While
+that name is taken, `ibus-daemon` never starts (and `ibus start` falsely reports
+"IBus is running"). The script therefore:
+
+- runs `systemctl --user disable --now omarchy-fcitx5.service`, so fcitx5 no
+  longer starts at login (re-enable with
+  `systemctl --user enable --now omarchy-fcitx5.service`);
+- stops any fcitx5 process that was started outside the unit;
+- marks `~/.config/autostart/org.fcitx.Fcitx5.desktop` as `Hidden=true`, in case
+  the session uses an XDG autostart path instead of systemd.
+
+### 3. IBus engine config
 Fresh installs don't list Avro as a usable engine. The script sets it via
 gsettings (the same backend IBus reads — the machines's system dconf DB defaults
 both to `[]`):
@@ -57,7 +76,7 @@ gsettings set org.freedesktop.ibus.general engines-order "['ibus-avro', 'xkb:us:
 English stays the default engine; Ctrl+Space toggles to Bengali. This is the
 "post-install IBus config" that would otherwise be manual.
 
-### 3. IM environment
+### 4. IM environment
 Writes the 7-variable override to **`/etc/environment.d/99-ibus.conf`** (as root,
 via `install -D`, so the directory is created if needed). This is the one place
 that outranks Omarchy's `/usr/lib/environment.d/10-omarchy-fcitx.conf`, because
@@ -86,15 +105,19 @@ them up without waiting for reboot, and prints what
 `30-systemd-environment-d-generator` would hand the next session ("expect no
 fcitx").
 
-### 4. Hyprland Lua patches
+### 5. Hyprland Lua patches
 All three files live in `$HYPR_CFG` (`~/.config/hypr`).
 
 The script uses **marker blocks** (`---[BEGIN]|omarchy-ibus-avro` /
 `---[END]|omarchy-ibus-avro`; bindings uses `>>> ... <<<`) and an **upsert**
-helper: if the marker is already in the file, the whole block is replaced
-(awk skips between markers, then the new block is appended); if not, it's
-appended; if the file doesn't exist, it's created. Each modified file is backed
-up to `<file>.bak.<timestamp>` first. This is what makes re-runs safe.
+helper: if the marker is already in the file, every matching block (from the
+first begin to the last end, including duplicates left by older script versions)
+is removed and one fresh block is appended; if not, it's appended; if the file
+doesn't exist, it's created. Each modified file is backed up to
+`<file>.bak.<timestamp>` first. This is what makes re-runs safe.
+(Bindings pass their own `>>> omarchy-ibus-avro` / `<<< omarchy-ibus-avro`
+markers to the same helper, which is why an existing duplicate Ctrl+Space
+binding is collapsed to one on the next run.)
 
 - **autostart.lua** — first *removes* any legacy
   `o.exec_on_start("ibus-daemon ...")` line (the restored Omarchy default would
@@ -114,12 +137,13 @@ up to `<file>.bak.<timestamp>` first. This is what makes re-runs safe.
   (a safety net for XWayland/XIM fallbacks; the v2 panel is already compositor
   popups).
 
-### 5. Reload
+### 6. Reload
 If `hyprctl` is available and `HYPRLAND_INSTANCE_SIGNATURE` is set (i.e. we're in
-a live Hyprland session), it runs `hyprctl reload` and `hyprctl configerrors` to
+a live Hyprland session), it starts `ibus-daemon` if needed (fcitx5 is no longer
+holding the bus name), then runs `hyprctl reload` and `hyprctl configerrors` to
 sanity-check the patched Lua.
 
-### 6. Wrap up + logout
+### 7. Wrap up + logout
 Prints a summary, then asks "Log out now?" Read from stdin with a guard so a
 closed pipe can't abort the script under `set -e`.
 
@@ -139,10 +163,11 @@ auto-starts and the tray icon appears.
 
 | Symptom | Fix |
 |---|---|
+| `ibus start` says "IBus is running" but no daemon exists | disable `omarchy-fcitx5.service` (it owns `org.freedesktop.IBus`) |
 | No IBus after login | `o.exec_on_start("ibus start --type wayland")` |
 | Apps get fcitx mode / no IM module | `/etc/environment.d/99-ibus.conf` override |
 | Focus-stealing candidate window | `--type wayland` (v2 panel) |
 | Avro not switchable | gsettings `preload-engines` / `engines-order` |
 | Toggle combo collides with Omarchy | **Ctrl+Space** (no Omarchy default) |
-| Re-runs duplicate edits / no rollback | marker-block upsert + `.bak.<timestamp>` backend-up |
+| Re-runs duplicate edits / no rollback | all-block marker upsert + `.bak.<timestamp>` backup |
 | Script aborts on closed stdin / invalid logout | guarded `read`, `uwsm stop` |

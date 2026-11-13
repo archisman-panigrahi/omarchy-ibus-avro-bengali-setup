@@ -1,7 +1,8 @@
 # Using this setup for other IBus engines / languages
 
-0. **Run the engine-agnostic base first** (installs `ibus`, writes the IM env
-   override, auto-starts ibus in Wayland mode, adds the focus window rule):
+0. **Run the engine-agnostic base first** (installs `ibus`, disables Omarchy's
+   fcitx5 user service, writes the IM env override, auto-starts ibus in Wayland
+   mode, adds the focus window rule):
 
    ```bash
    bash base-setup.sh

@@ -2,9 +2,10 @@
 #
 # base-setup.sh — engine-agnostic IBus foundation for Omarchy/Hyprland
 #
-# Installs `ibus` itself, fixes the IM environment (overriding Omarchy's default
-# fcitx env.d), starts ibus in Wayland mode via autostart.lua, and adds the
-# focus safety-net window rule to hyprland.lua.
+# Installs `ibus` itself, disables Omarchy's fcitx5 user service (it owns
+# org.freedesktop.IBus and blocks ibus-daemon), fixes the IM environment
+# (overriding Omarchy's default fcitx env.d), starts ibus in Wayland mode via
+# autostart.lua, and adds the focus safety-net window rule to hyprland.lua.
 #
 # This does NOT pick a language/engine — that part is engine-specific. After
 # running this, install your engine (e.g. `yay -S ibus-m17n`), find its ID via
@@ -83,7 +84,54 @@ step "Installing ibus (official repo)..."
 sudo pacman -S --needed --noconfirm ibus
 
 # ---------------------------------------------------------------------------
-# 2. IM environment — must beat Omarchy's default fcitx env.d
+# 2. Disable fcitx5 — Omarchy starts it as a systemd user service, and its
+#    ibusfrontend addon claims org.freedesktop.IBus on the session bus. While
+#    that name is taken, ibus-daemon cannot start: `ibus` commands talk to
+#    fcitx5 instead, so no engine ever appears. Disable it for this account.
+# ---------------------------------------------------------------------------
+step "Disabling fcitx5 (it claims org.freedesktop.IBus and blocks IBus)..."
+FCITX_UNIT="omarchy-fcitx5.service"
+
+if systemctl --user cat "$FCITX_UNIT" >/dev/null 2>&1; then
+  systemctl --user disable --now "$FCITX_UNIT" >/dev/null 2>&1 || true
+  if systemctl --user is-active "$FCITX_UNIT" >/dev/null 2>&1; then
+    warn "could not stop $FCITX_UNIT — run: systemctl --user stop $FCITX_UNIT"
+  elif systemctl --user is-enabled "$FCITX_UNIT" >/dev/null 2>&1; then
+    warn "could not disable $FCITX_UNIT — run: systemctl --user disable $FCITX_UNIT"
+  else
+    ok "disabled and stopped $FCITX_UNIT"
+    ok "re-enable later with: systemctl --user enable --now $FCITX_UNIT"
+  fi
+else
+  warn "$FCITX_UNIT not found — fcitx5 may be started another way"
+fi
+
+# If fcitx5 is running outside the unit (e.g. an XDG autostart path), stop it
+# so the IBus bus name is free right now.
+if pgrep -x fcitx5 >/dev/null 2>&1; then
+  warn "fcitx5 is still running — stopping it for this session"
+  pkill -x fcitx5 2>/dev/null || true
+  sleep 1
+fi
+
+# Hide the XDG autostart entry as well, in case the session starts it directly.
+AUTOSTART_FILE="$HOME/.config/autostart/org.fcitx.Fcitx5.desktop"
+if ! grep -qxF 'Hidden=true' "$AUTOSTART_FILE" 2>/dev/null; then
+  mkdir -p "$(dirname "$AUTOSTART_FILE")"
+  if [[ ! -f "$AUTOSTART_FILE" ]]; then
+    printf '[Desktop Entry]\nHidden=true\n' > "$AUTOSTART_FILE"
+  elif grep -qE '^Hidden=' "$AUTOSTART_FILE"; then
+    sed -i 's/^Hidden=.*/Hidden=true/' "$AUTOSTART_FILE"
+  else
+    printf 'Hidden=true\n' >> "$AUTOSTART_FILE"
+  fi
+  ok "hid fcitx5 XDG autostart entry"
+else
+  ok "fcitx5 XDG autostart already hidden"
+fi
+
+# ---------------------------------------------------------------------------
+# 3. IM environment — must beat Omarchy's default fcitx env.d
 #    (/usr/lib/environment.d/10-omarchy-fcitx.conf). /etc is applied last.
 # ---------------------------------------------------------------------------
 step "Writing IM environment override..."
@@ -124,12 +172,12 @@ if [[ -x /usr/lib/systemd/user-environment-generators/30-systemd-environment-d-g
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Hyprland Lua patches (generic, engine-agnostic)
+# 4. Hyprland Lua patches (generic, engine-agnostic)
 # ---------------------------------------------------------------------------
 step "Patching Hyprland Lua config ($HYPR_CFG)..."
 mkdir -p "$HYPR_CFG"
 
-# 3a. autostart.lua — start ibus via the Lua start hook (hyprland.conf is ignored in Lua mode)
+# 4a. autostart.lua — start ibus via the Lua start hook (hyprland.conf is ignored in Lua mode)
 # Remove any legacy `ibus-daemon -drx` autostart line FIRST: it survives restores
 # and would race our wayland start (old X11 panel, no proper tray/SNI icon).
 if [ -f "$HYPR_CFG/autostart.lua" ] && grep -q 'o.exec_on_start("ibus-daemon' "$HYPR_CFG/autostart.lua" 2>/dev/null; then
@@ -147,7 +195,7 @@ IBLOCK
 )
 append_block "$HYPR_CFG/autostart.lua" "autostart.lua" "$AUTOSTART_BLOCK"
 
-# 3b. hyprland.lua — focus safety net for ibus windows (any engine)
+# 4b. hyprland.lua — focus safety net for ibus windows (any engine)
 WINDOWRULE_BLOCK=$(cat <<'IBLOCK'
 -- ---[BEGIN]|omarchy-ibus-avro
 -- IBus candidate/menu windows must never tile or steal focus.
@@ -158,16 +206,26 @@ IBLOCK
 append_block "$HYPR_CFG/hyprland.lua" "hyprland.lua" "$WINDOWRULE_BLOCK"
 
 # ---------------------------------------------------------------------------
-# 4. Reload (only if running inside a Hyprland session)
+# 5. Reload (only if running inside a Hyprland session)
 # ---------------------------------------------------------------------------
 if command -v hyprctl >/dev/null 2>&1 && [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+  # Start IBus now that fcitx5 no longer owns org.freedesktop.IBus, so newly
+  # launched apps work without waiting for a logout.
+  if ! pgrep -x ibus-daemon >/dev/null 2>&1; then
+    if ibus start --type wayland >/dev/null 2>&1; then
+      ok "started ibus-daemon"
+    else
+      warn "could not start ibus-daemon — it will start at next login"
+    fi
+  fi
+
   step "Reloading Hyprland config..."
   if hyprctl reload >/dev/null 2>&1; then ok "reloaded"; else warn "reload failed"; fi
   hyprctl configerrors
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Wrap up
+# 6. Wrap up
 # ---------------------------------------------------------------------------
 step "Base setup complete."
 cat <<EOF
@@ -175,6 +233,7 @@ cat <<EOF
   Installed : ibus
   Env file  : ${INSTALLED_ENV}
   Lua files : autostart.lua, hyprland.lua (engine-agnostic)
+  Fcitx5    : disabled for this user (restore with: systemctl --user enable --now omarchy-fcitx5.service)
 
   Base IBus + Omarchy wiring is now in place. Engine-specific parts are NOT
   done here — see other-engines.md:

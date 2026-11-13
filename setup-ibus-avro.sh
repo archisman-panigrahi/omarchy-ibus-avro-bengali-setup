@@ -2,9 +2,10 @@
 #
 # setup-ibus-avro.sh — IBus + Avro Phonetic (Bengali) for Omarchy/Hyprland
 #
-# Installs `ibus` (official repo) and `ibus-avro-git` (AUR via yay), fixes the
-# IM environment (overriding Omarchy's default fcitx env.d), patches the three
-# Hyprland Lua files, and asks you to log out/in.
+# Installs `ibus` (official repo) and `ibus-avro-git` (AUR via yay), disables
+# Omarchy's fcitx5 user service (it owns org.freedesktop.IBus and blocks
+# ibus-daemon), fixes the IM environment (overriding Omarchy's default fcitx
+# env.d), patches the three Hyprland Lua files, and asks you to log out/in.
 #
 # Idempotent: safe to re-run. Existing omarchy-ibus-avro blocks are replaced,
 # and files are backed up as <file>.bak.<timestamp>.
@@ -34,11 +35,13 @@ backup() { # $1 file — make one .bak.<timestamp> copy per run
   cp -a "$f" "$bk" && ok "backed up $f -> $bk"
 }
 
-# upsert: replace an existing "[BEGIN]|tag ... [END]|tag" block in $1 with $2
+# upsert: replace every "[BEGIN]|tag ... [END]|tag" block in $1 with $2.
+# $3/$4 override the markers (defaults: the shared BEGIN_MARK/END_MARK). Removing
+# *all* matching blocks is what de-duplicates files left by older script versions.
 upsert() {
-  local file="$1" block="$2" tmp
+  local file="$1" block="$2" b="${3:-$BEGIN_MARK}" e="${4:-$END_MARK}" tmp
   tmp="$(mktemp)"
-  awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
+  awk -v b="$b" -v e="$e" '
     !inskip && index($0, b) { inskip = 1; next }
     inskip && index($0, e)  { inskip = 0; next }
     !inskip { print }
@@ -47,12 +50,12 @@ upsert() {
   rm -f "$tmp"
 }
 
-append_block() { # $1 file, $2 description, $3 block
-  local file="$1" desc="$2" block="$3" backup_done=""
+append_block() { # $1 file, $2 description, $3 block, [$4 begin mark, $5 end mark]
+  local file="$1" desc="$2" block="$3" b="${4:-$BEGIN_MARK}" e="${5:-$END_MARK}"
   if [[ -f "$file" ]]; then
     backup "$file"
-    if grep -qF -- "$BEGIN_MARK" "$file"; then
-      upsert "$file" "$block"
+    if grep -qF -- "$b" "$file"; then
+      upsert "$file" "$block" "$b" "$e"
       ok "updated $desc ($file)"
     else
       printf '\n%s\n' "$block" >> "$file"
@@ -93,7 +96,54 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. IBus engine config — fresh installs don't list Avro as a usable engine
+# 2. Disable fcitx5 — Omarchy starts it as a systemd user service, and its
+#    ibusfrontend addon claims org.freedesktop.IBus on the session bus. While
+#    that name is taken, ibus-daemon cannot start: `ibus` commands talk to
+#    fcitx5 instead, so Avro never appears. Disable it for this user account.
+# ---------------------------------------------------------------------------
+step "Disabling fcitx5 (it claims org.freedesktop.IBus and blocks IBus)..."
+FCITX_UNIT="omarchy-fcitx5.service"
+
+if systemctl --user cat "$FCITX_UNIT" >/dev/null 2>&1; then
+  systemctl --user disable --now "$FCITX_UNIT" >/dev/null 2>&1 || true
+  if systemctl --user is-active "$FCITX_UNIT" >/dev/null 2>&1; then
+    warn "could not stop $FCITX_UNIT — run: systemctl --user stop $FCITX_UNIT"
+  elif systemctl --user is-enabled "$FCITX_UNIT" >/dev/null 2>&1; then
+    warn "could not disable $FCITX_UNIT — run: systemctl --user disable $FCITX_UNIT"
+  else
+    ok "disabled and stopped $FCITX_UNIT"
+    ok "re-enable later with: systemctl --user enable --now $FCITX_UNIT"
+  fi
+else
+  warn "$FCITX_UNIT not found — fcitx5 may be started another way"
+fi
+
+# If fcitx5 is running outside the unit (e.g. an XDG autostart path), stop it
+# so the IBus bus name is free right now.
+if pgrep -x fcitx5 >/dev/null 2>&1; then
+  warn "fcitx5 is still running — stopping it for this session"
+  pkill -x fcitx5 2>/dev/null || true
+  sleep 1
+fi
+
+# Hide the XDG autostart entry as well, in case the session starts it directly.
+AUTOSTART_FILE="$HOME/.config/autostart/org.fcitx.Fcitx5.desktop"
+if ! grep -qxF 'Hidden=true' "$AUTOSTART_FILE" 2>/dev/null; then
+  mkdir -p "$(dirname "$AUTOSTART_FILE")"
+  if [[ ! -f "$AUTOSTART_FILE" ]]; then
+    printf '[Desktop Entry]\nHidden=true\n' > "$AUTOSTART_FILE"
+  elif grep -qE '^Hidden=' "$AUTOSTART_FILE"; then
+    sed -i 's/^Hidden=.*/Hidden=true/' "$AUTOSTART_FILE"
+  else
+    printf 'Hidden=true\n' >> "$AUTOSTART_FILE"
+  fi
+  ok "hid fcitx5 XDG autostart entry"
+else
+  ok "fcitx5 XDG autostart already hidden"
+fi
+
+# ---------------------------------------------------------------------------
+# 3. IBus engine config — fresh installs don't list Avro as a usable engine
 #    until it's added to the preloaded/ordered engine lists.
 # ---------------------------------------------------------------------------
 step "Configuring IBus engines (English default, Bengali via Ctrl+Space)..."
@@ -108,7 +158,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. IM environment — must beat Omarchy's default fcitx env.d
+# 4. IM environment — must beat Omarchy's default fcitx env.d
 #    (/usr/lib/environment.d/10-omarchy-fcitx.conf). /etc is applied last.
 # ---------------------------------------------------------------------------
 step "Writing IM environment override..."
@@ -150,12 +200,12 @@ if [[ -x /usr/lib/systemd/user-environment-generators/30-systemd-environment-d-g
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Hyprland Lua patches
+# 5. Hyprland Lua patches
 # ---------------------------------------------------------------------------
 step "Patching Hyprland Lua config ($HYPR_CFG)..."
 mkdir -p "$HYPR_CFG"
 
-# 3a. autostart.lua — start ibus via the Lua start hook (hyprland.conf is ignored in Lua mode)
+# 5a. autostart.lua — start ibus via the Lua start hook (hyprland.conf is ignored in Lua mode)
 # Remove any legacy `ibus-daemon -drx` autostart line FIRST: it survives restores
 # and would race our wayland start (old X11 panel, no proper tray/SNI icon).
 if [ -f "$HYPR_CFG/autostart.lua" ] && grep -q 'o.exec_on_start("ibus-daemon' "$HYPR_CFG/autostart.lua" 2>/dev/null; then
@@ -173,7 +223,7 @@ IBLOCK
 )
 append_block "$HYPR_CFG/autostart.lua" "autostart.lua" "$AUTOSTART_BLOCK"
 
-# 3b. bindings.lua — bind the Avro toggle to Ctrl+Space (no Omarchy default on it)
+# 5b. bindings.lua — bind the Avro toggle to Ctrl+Space (no Omarchy default on it)
 BINDINGS_BLOCK=$(cat <<'IBLOCK'
 -- >>> omarchy-ibus-avro
 -- Toggle Bengali/English with Ctrl+Space.
@@ -181,9 +231,10 @@ o.bind("CTRL + SPACE", "IBus Avro toggle", "sh -c 'e=$(ibus engine); if [ \"$e\"
 -- <<< omarchy-ibus-avro
 IBLOCK
 )
-append_block "$HYPR_CFG/bindings.lua" "bindings.lua" "$BINDINGS_BLOCK"
+append_block "$HYPR_CFG/bindings.lua" "bindings.lua" "$BINDINGS_BLOCK" \
+  "-- >>> omarchy-ibus-avro" "-- <<< omarchy-ibus-avro"
 
-# 3c. hyprland.lua — focus safety net for ibus windows
+# 5c. hyprland.lua — focus safety net for ibus windows
 WINDOWRULE_BLOCK=$(cat <<'IBLOCK'
 -- ---[BEGIN]|omarchy-ibus-avro
 -- IBus candidate/menu windows must never tile or steal focus.
@@ -194,16 +245,26 @@ IBLOCK
 append_block "$HYPR_CFG/hyprland.lua" "hyprland.lua" "$WINDOWRULE_BLOCK"
 
 # ---------------------------------------------------------------------------
-# 5. Reload (only if running inside a Hyprland session)
+# 6. Reload (only if running inside a Hyprland session)
 # ---------------------------------------------------------------------------
 if command -v hyprctl >/dev/null 2>&1 && [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+  # Start IBus now that fcitx5 no longer owns org.freedesktop.IBus, so newly
+  # launched apps work without waiting for a logout.
+  if ! pgrep -x ibus-daemon >/dev/null 2>&1; then
+    if ibus start --type wayland >/dev/null 2>&1; then
+      ok "started ibus-daemon"
+    else
+      warn "could not start ibus-daemon — it will start at next login"
+    fi
+  fi
+
   step "Reloading Hyprland config..."
   if hyprctl reload >/dev/null 2>&1; then ok "reloaded"; else warn "reload failed"; fi
   hyprctl configerrors
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Wrap up
+# 7. Wrap up
 # ---------------------------------------------------------------------------
 step "Setup complete."
 cat <<EOF
@@ -211,6 +272,7 @@ cat <<EOF
   Installed : ibus (avro already installed, or built from AUR as ibus-avro-git)
   Env file  : ${INSTALLED_ENV}
   Lua files : autostart.lua, bindings.lua, hyprland.lua
+  Fcitx5    : disabled for this user (restore with: systemctl --user enable --now omarchy-fcitx5.service)
 
   You MUST log out and back in so the session env is captured with ibus
   (already-running apps keep the old fcitx env). After re-login ibus
